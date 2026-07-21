@@ -1,5 +1,6 @@
+fastapi
+uvicorn
 
-<<<<<<< HEAD
 sqlalchemy
 pandas
 lxml
@@ -7,5 +8,4 @@ python-dotenv
 google-cloud-storage
 openpyxl
 psycopg2-binary
-=======
->>>>>>> 11fd4005148b2c370cafb9e6000f2dd0f86671c5
+python-dateutil
