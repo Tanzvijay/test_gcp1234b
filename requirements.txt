@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pandas
+lxml
+python-dotenv
+google-cloud-storage
+openpyxl
+psycopg2-binary
