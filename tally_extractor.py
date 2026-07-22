@@ -6,7 +6,7 @@ import os
 from typing import Optional, Generator
 from lxml import etree
 from datetime import datetime
-from secrets import get_secret
+from gcp_secrets import get_secret
 from dotenv import load_dotenv
 
 from google.cloud import storage as gcs_storage
