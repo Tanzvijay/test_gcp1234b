@@ -338,7 +338,7 @@ def extract_brs(source: str, file_name: Optional[str] = None) -> list:
 
     if file_name:
         _save_to_db(df, file_name)
-    return df.to_dict(orient="records")
+    return _safe_records(df)
 
 
 # =========================================================
@@ -475,7 +475,7 @@ def extract_gst(source: str, file_name: Optional[str] = None) -> list:
 
     if file_name:
         _save_to_db(df, file_name)
-    return df.to_dict(orient="records")
+    return _safe_records(df)
 
 
 # =========================================================
@@ -579,7 +579,7 @@ def extract_month_end_provisions(source: str, file_name: Optional[str] = None) -
 
     if file_name:
         _save_to_db(df, file_name)
-    return df.to_dict(orient="records")
+    return _safe_records(df)
 
 
 # =========================================================
@@ -643,7 +643,7 @@ def extract_ledger_transactions(source: str, file_name: Optional[str] = None) ->
 
     if file_name:
         _save_to_db(df, file_name)
-    return df.to_dict(orient="records")
+    return _safe_records(df)
 
 
 # =========================================================
@@ -788,8 +788,8 @@ def extract_tds(
         _save_to_db(payment_df, paid_table)
 
     return {
-        "tds_deducted": deducted_df.head(10).to_dict(orient="records"),
-        "tds_paid":     payment_df.head(10).to_dict(orient="records"),
+        "tds_deducted": _safe_records(deducted_df.head(10)),
+        "tds_paid":     _safe_records(payment_df.head(10)),
     }
 
 
@@ -946,14 +946,14 @@ def extract_bills(source: str, file_name: Optional[str] = None) -> dict:
         subset = df[df["Bill Type"].astype(str).str.strip() == bill_type]
         if file_name and not subset.empty:
             _save_to_db(subset, f"{file_name}_{bill_type.lower().replace(' ', '_')}")
-        bill_types[bill_type] = subset.head(10).to_dict(orient="records")
+        bill_types[bill_type] = _safe_records(subset.head(10))
 
     if file_name and not outstanding.empty:
         _save_to_db(outstanding, f"{file_name}_outstanding")
 
     return {
         "bill_types":  bill_types,
-        "outstanding": outstanding.head(10).to_dict(orient="records"),
+        "outstanding": _safe_records(outstanding.head(10)),
     }
 
 
@@ -1029,7 +1029,7 @@ def extract_stock(source: str, file_name: Optional[str] = None) -> list:
 
     if file_name:
         _save_to_db(df, file_name)
-    return df.to_dict(orient="records")
+    return _safe_records(df)
 
 
 
