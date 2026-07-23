@@ -203,6 +203,9 @@ def _save_to_db(df: pd.DataFrame, table_name: str):
     engine = _get_engine()
     df.to_sql(table_name, engine, if_exists="replace", index=False)
 
+def _safe_records(df: pd.DataFrame) -> list:
+    return df.where(pd.notnull(df), None).to_dict(orient="records")
+
 
 def _release_voucher(voucher):
     """
