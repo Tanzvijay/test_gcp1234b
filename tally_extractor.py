@@ -97,6 +97,9 @@ _CLEAN_RE = [
 ]
 
 def _clean_line(text: str) -> bytes:
+    # skip regex on clean lines — 90% of lines will skip entirely
+    if '&' not in text and '\x00' not in text and '\x0B' not in text:
+        return text.encode("utf-8")
     for pattern, repl in _CLEAN_RE:
         text = pattern.sub(repl, text)
     return text.encode("utf-8")
