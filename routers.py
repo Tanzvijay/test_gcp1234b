@@ -49,11 +49,11 @@ async def upload_gcs_file(
     return {"gcs_uri": gcs_uri}
 
     
-):
+
     """
     Uploads a local file to Google Cloud Storage.
     """
-    return upload_file_to_gcs(local_path, BUCKET_NAME, destination_blob_name)
+    
 
 # =========================================================
 # LIST FILES
