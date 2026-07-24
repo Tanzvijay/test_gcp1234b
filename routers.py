@@ -16,6 +16,7 @@ from tally_extractor import (
     BUCKET_NAME,
     list_gcs_folders,
     extract_stock,
+    upload_from_request,
   
     
 
