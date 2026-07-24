@@ -1,9 +1,9 @@
 from typing import Optional
 
 
-from fastapi import FastAPI, Query, UploadFile, File, Form 
+from fastapi import FastAPI, Query
 
-
+from fastapi import FastAPI, Query, UploadFile, File, Form  # ✅ add these
 
 from tally_extractor import (
     extract_bills,
@@ -13,10 +13,11 @@ from tally_extractor import (
     extract_ledger_transactions,
     extract_tds,
     list_gcs_files,
+    upload_from_request,
     BUCKET_NAME,
+    
     list_gcs_folders,
     extract_stock,
-    upload_from_request,
   
     
 
@@ -38,7 +39,8 @@ def list_folders():
     """
     Lists all folders in the GCS bucket.
     """
-    return list_gcs_folders(BUCKET_NAME)    
+    return list_gcs_folders(BUCKET_NAME) 
+   
 
 @app.post("/upload_gcs")
 async def upload_gcs_file(
@@ -84,7 +86,7 @@ def brs_endpoint(
 @app.get("/extract/gst", tags=["extraction"])
 def gst_endpoint(
     source:    str           = Query(..., description="GCS URI to the Tally XML export. e.g. gs://bucket/file.xml"),
-    file_name: Optional[str] = Query(None, description="If given, saves to PostgreSQL as this table name."),
+    file_name:  str = Query(None, description="If given, saves to PostgreSQL as this table name."),
 ):
     return extract_gst(source, file_name)
 
@@ -92,7 +94,7 @@ def gst_endpoint(
 @app.get("/extract/provisions", tags=["extraction"])
 def provisions_endpoint(
     source:    str           = Query(..., description="GCS URI to the Tally XML export. e.g. gs://bucket/file.xml"),
-    file_name: Optional[str] = Query(None, description="If given, saves to PostgreSQL as this table name."),
+    file_name: str = Query(None, description="If given, saves to PostgreSQL as this table name."),
 ):
     return extract_month_end_provisions(source, file_name)
 
@@ -100,15 +102,15 @@ def provisions_endpoint(
 @app.get("/extract/ledger", tags=["extraction"])
 def ledger_endpoint(
     source:    str           = Query(..., description="GCS URI to the Tally XML export. e.g. gs://bucket/file.xml"),
-    file_name: Optional[str] = Query(None, description="If given, saves to PostgreSQL as this table name."),
+    file_name: str = Query(None, description="If given, saves to PostgreSQL as this table name."),
 ):
     return extract_ledger_transactions(source, file_name)
 
 @app.get("/extract/tds", tags=["extraction"])
 def tds_endpoint(
     source:          str           = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
-    deducted_table:  Optional[str] = Query(None, description="If given, saves TDS Deducted to PostgreSQL as this table name."),
-    paid_table:      Optional[str] = Query(None, description="If given, saves TDS Paid to PostgreSQL as this table name."),
+    deducted_table:  str = Query(None, description="If given, saves TDS Deducted to PostgreSQL as this table name."),
+    paid_table:      str = Query(None, description="If given, saves TDS Paid to PostgreSQL as this table name."),
 ):
     """
     Returns two DataFrames (top 10 rows each):
@@ -121,7 +123,7 @@ def tds_endpoint(
 @app.get("/extract/bills", tags=["extraction"])
 def bills_endpoint(
     source:    str           = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
-    file_name: Optional[str] = Query(None, description="If given, saves outstanding to PostgreSQL as this table name."),
+    file_name: str = Query(None, description="If given, saves outstanding to PostgreSQL as this table name."),
 ):
     """
     Returns:
@@ -135,10 +137,13 @@ def bills_endpoint(
 @app.get("/extract/stock", tags=["extraction"])
 def stock_endpoint( 
     source:    str           = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
-    file_name: Optional[str] = Query(None, description="If given, saves stock to PostgreSQL as this table name."),
+    file_name: str = Query(None, description="If given, saves stock to PostgreSQL as this table name."),
 ):
     """
     Returns:
     - stock : top 10 stock rows
     """
     return extract_stock(source, file_name)
+
+
+
