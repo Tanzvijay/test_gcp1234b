@@ -6,7 +6,8 @@ import os
 from typing import Optional, Generator
 from lxml import etree
 from datetime import datetime
-from gcp_secrets import get_secret
+from fastapi import FastAPI, Query, UploadFile, File, Form  # ✅ add these
+
 from dotenv import load_dotenv
 
 from google.cloud import storage as gcs_storage
@@ -25,12 +26,12 @@ load_dotenv()
 
 
 
-DB_HOST = get_secret("DB_HOST")
-DB_PORT = get_secret("DB_PORT")
-DB_NAME = get_secret("DB_NAME")
-DB_USER = get_secret("DB_USER")
-DB_PASSWORD = get_secret("DB_PASSWORD")
-BUCKET_NAME = get_secret("BUCKET_NAME")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+BUCKET_NAME = os.getenv("BUCKET_NAME")
 
 DATABASE_URL = (
     f"postgresql://{DB_USER}:{DB_PASSWORD}"
@@ -41,18 +42,29 @@ DATABASE_URL = (
 def _get_engine():
     return create_engine(DATABASE_URL)
 
-async def upload_large_xml(file, bucket_name: str, destination_blob: str) -> str:
+async def upload_from_request(
+    file: UploadFile,
+    bucket_name: str,
+    destination_blob_name: str
+) -> str:
+    client = gcs_storage.Client()
+    bucket = client.bucket(bucket_name)
+    blob   = bucket.blob(destination_blob_name)
+
+    contents = await file.read()  # read file bytes from request
+    blob.upload_from_string(contents, content_type=file.content_type)
+
+    return f"gs://{bucket_name}/{destination_blob_name}"
+
+def upload_large_xml(bucket_name, local_file, destination_blob):
     client = gcs_storage.Client()
     bucket = client.bucket(bucket_name)
     blob   = bucket.blob(destination_blob)
     blob.chunk_size = 10 * 1024 * 1024
-    with blob.open("wb", content_type=file.content_type or "application/octet-stream") as gcs_stream:
-        while True:
-            chunk = await file.read(10 * 1024 * 1024)
-            if not chunk:
-                break
-            gcs_stream.write(chunk)
+    with open(local_file, "rb") as f:
+        blob.upload_from_file(f)
     return f"gs://{bucket_name}/{destination_blob}"
+
 
 def list_gcs_files(bucket_name: str, prefix: Optional[str] = None) -> list:
     client = gcs_storage.Client()
