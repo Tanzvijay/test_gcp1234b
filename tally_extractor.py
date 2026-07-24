@@ -8,7 +8,7 @@ from lxml import etree
 from datetime import datetime
 from gcp_secrets import get_secret
 from dotenv import load_dotenv
-
+from fastapi import FastAPI, Query, UploadFile, File, Form  #
 from google.cloud import storage as gcs_storage
 
 # Inlined from Stock.py — avoids a blocking import (Stock.py hangs on load)
