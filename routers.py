@@ -39,12 +39,14 @@ def list_folders():
     """
     return list_gcs_folders(BUCKET_NAME)    
 
-@app.get("/upload_gcs")
-def upload_gcs_file(
-    local_path: str = Query(..., description="Local path to the file to upload."),
-    BUCKET_NAME: str = Query(..., description="GCS bucket name."),
-
-    destination_blob_name: str = Query(..., description="Destination blob name in GCS."),
+@app.post("/upload_gcs")
+async def upload_gcs_file(
+    file: UploadFile = File(..., description="File to upload."),
+    bucket_name: str = Form(..., description="GCS bucket name."),
+    destination_blob_name: str = Form(..., description="Destination blob name in GCS."),
+):
+    gcs_uri = await upload_from_request(file, bucket_name, destination_blob_name)
+    return {"gcs_uri": gcs_uri}
 
     
 ):
