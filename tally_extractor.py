@@ -54,7 +54,7 @@ async def upload_from_request(
     name = file.filename
     contents = await file.read()  # read file bytes from request
     blob.upload_from_string(contents, content_type=file.content_type)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    date = datetime.now().strftime("%Y%m%d")
 
     return f"gs://{BUCKET_NAME}/{destination_blob_name}/{name}_{timestamp}"
 
@@ -343,9 +343,9 @@ def extract_brs(source: str, file_name: Optional[str] = None) -> list:
     df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0)
     for col in ["Voucher Date", "Instrument Date", "Bankers Date", "Bank Date"]:
         df[col] = pd.to_datetime(df[col], format="%Y%m%d", errors="coerce").dt.date
-
+    
     if file_name:
-        _save_to_db(df, file_name)
+        _save_to_db(df, file_name+__+timestamp)
     return _safe_records(df)
 
 
