@@ -481,7 +481,7 @@ def extract_gst(source: str, file_name: Optional[str] = None) -> list:
     df[int_cols] = df[int_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
 
     if file_name:
-        _save_to_db(df, df,f"GST_{file_name}__{date}")
+        _save_to_db(df, f"GST_{file_name}__{date}")
     return _safe_records(df)
 
 
@@ -576,7 +576,7 @@ def extract_month_end_provisions(source: str, file_name: Optional[str] = None) -
     ])
     if df.empty:
         if file_name:
-            _save_to_db(df, file_name)
+            _save_to_db(df, f"MONTH_end_{file_name}__{date}")
         return []
 
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
@@ -585,8 +585,7 @@ def extract_month_end_provisions(source: str, file_name: Optional[str] = None) -
     df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0)
 
     if file_name:
-        
-        _save_to_db(df, f"MONTH_end_{file_name}__{date}"))
+        _save_to_db(df, f"MONTH_end_{file_name}__{date}")
     return _safe_records(df)
 
 
@@ -640,8 +639,7 @@ def extract_ledger_transactions(source: str, file_name: Optional[str] = None) ->
     ])
     if df.empty:
         if file_name:
-            
-            _save_to_db(df, f"Vouchers+{file_name}__{date}")
+            _save_to_db(df, f"Vouchers_{file_name}__{date}")
         return []
 
     df["Date"] = pd.to_datetime(df["Date"], format="%Y%m%d", errors="coerce").dt.date
@@ -651,7 +649,7 @@ def extract_ledger_transactions(source: str, file_name: Optional[str] = None) ->
         pd.to_numeric, errors="coerce").fillna(0)
 
     if file_name:
-        _save_to_db(df, file_name)
+        _save_to_db(df, f"Vouchers_{file_name}__{date}")
     return _safe_records(df)
 
 
@@ -954,11 +952,11 @@ def extract_bills(source: str, file_name: Optional[str] = None) -> dict:
             continue
         subset = df[df["Bill Type"].astype(str).str.strip() == bill_type]
         if file_name and not subset.empty:
-            _save_to_db(subset, f"{file_name}_{bill_type.lower().replace(' ', '_')}")
+            _save_to_db(subset, f"{file_name}_{bill_type.lower().replace(' ', '_')}__{date}")
         bill_types[bill_type] = _safe_records(subset.head(10))
 
     if file_name and not outstanding.empty:
-        _save_to_db(outstanding, f"{file_name}_outstanding")
+        _save_to_db(outstanding, f"{file_name}_outstanding__{date}")
 
     return {
         "bill_types":  bill_types,
@@ -1037,6 +1035,5 @@ def extract_stock(source: str, file_name: Optional[str] = None) -> list:
     df = df[expected_columns].reset_index(drop=True)
 
     if file_name:
-        _save_to_db(df, file_name)
+        _save_to_db(df, f"Stock_{file_name}__{date}")
     return _safe_records(df)
-
