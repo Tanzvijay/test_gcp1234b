@@ -43,7 +43,7 @@ async def upload_gcs_file(
     """
     Uploads a file to Google Cloud Storage.
     """
-    gcs_uri = await upload_from_request(file, bucket_name, destination_blob_name)
+    gcs_uri = await upload_from_request(file, destination_blob_name)
     return {"gcs_uri": gcs_uri}
 
 
