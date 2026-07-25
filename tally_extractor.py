@@ -44,7 +44,7 @@ def _get_engine():
 
 async def upload_from_request(
     file: UploadFile,
-    bucket_name: str,
+    
     destination_blob_name: str
 ) -> str:
     client = gcs_storage.Client()
