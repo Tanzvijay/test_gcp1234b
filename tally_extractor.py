@@ -308,10 +308,14 @@ def _build_brs_row(bank, voucher):
 
 
 def extract_brs(source: str, file_name: Optional[str] = None) -> list:
-    """TRUE streaming — iterparse direct from GCS, clears at VOUCHER level."""
+    """
+    TRUE streaming — iterparse direct from GCS, clears at VOUCHER level
+    so the whole subtree (bank allocations + ledger entries) is freed
+    together. Memory stays bounded on very large (1GB+) files.
+    """
     stream = _open_gcs_stream(source)
     rows   = []
- 
+
     context = etree.iterparse(
         stream, events=("end",), tag="VOUCHER", recover=True, huge_tree=True
     )
@@ -325,11 +329,11 @@ def extract_brs(source: str, file_name: Optional[str] = None) -> list:
             print("BRS row error:", repr(e))
         finally:
             _release_voucher(voucher)
- 
+
     df = pd.DataFrame(rows)
     if df.empty:
         return []
- 
+
     string_cols = ["Ledger Name", "Voucher Type", "Voucher Number",
                    "Transaction Type", "Payment Favouring", "Reference Number",
                    "Payment Mode", "Bank Party Name"]
@@ -338,12 +342,12 @@ def extract_brs(source: str, file_name: Optional[str] = None) -> list:
     df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0)
     for col in ["Voucher Date", "Instrument Date", "Bankers Date", "Bank Date"]:
         df[col] = pd.to_datetime(df[col], format="%Y%m%d", errors="coerce").dt.date
- 
+    
     if file_name:
-        _save_to_db(df, _table_name(file_name))   # FIXED: was f"{file_name}__{date}" — 'date' was undefined
+        _save_to_db(df,f"BRS_{file_name}__{date}")
     return _safe_records(df)
- 
- 
+
+
 # =========================================================
 # GST — iterparse, true streaming
 # =========================================================
@@ -355,8 +359,8 @@ def _get_text(element, tag_name: str) -> str:
     except Exception:
         pass
     return ""
- 
- 
+
+
 def _extract_tax_amounts(voucher) -> dict:
     taxes = {"CGST": 0.0, "SGST": 0.0, "IGST": 0.0, "CESS": 0.0}
     for entry in voucher.findall(".//LEDGERENTRIES.LIST"):
@@ -388,8 +392,8 @@ def _extract_tax_amounts(voucher) -> dict:
         elif "CESS" in ledger_name:
             taxes["CESS"] += abs_amount
     return taxes
- 
- 
+
+
 def _extract_invoice_amount(voucher, party_name: str) -> float:
     TAX_KEYWORDS = ("CGST", "SGST", "IGST", "CESS", "TAX", "DISCOUNT")
     if party_name:
@@ -422,13 +426,13 @@ def _extract_invoice_amount(voucher, party_name: str) -> float:
         return abs(float(_get_text(voucher, "AMOUNT")))
     except Exception:
         return 0.0
- 
- 
+
+
 def extract_gst(source: str, file_name: Optional[str] = None) -> list:
     """TRUE streaming — iterparse direct from GCS."""
-    stream = _open_gcs_stream(source)
-    rows   = []
- 
+    stream  = _open_gcs_stream(source)
+    rows    = []
+
     context = etree.iterparse(stream, events=("end",), tag="VOUCHER",
                                recover=True, huge_tree=True)
     for _, voucher in context:
@@ -437,7 +441,7 @@ def extract_gst(source: str, file_name: Optional[str] = None) -> list:
             total_tax = sum(tax_data.values())
             if total_tax == 0:
                 continue
- 
+
             party_name     = _get_text(voucher, "PARTYLEDGERNAME")
             invoice_amount = _extract_invoice_amount(voucher, party_name)
             voucher_date   = _get_text(voucher, "DATE")
@@ -445,7 +449,7 @@ def extract_gst(source: str, file_name: Optional[str] = None) -> list:
                 parsed_date = pd.to_datetime(voucher_date, format="%Y%m%d").date()
             except Exception:
                 parsed_date = None
- 
+
             rows.append({
                 "GUID":          (voucher.findtext("GUID", "") or "").strip(),
                 "VoucherType":   _get_text(voucher, "VOUCHERTYPENAME"),
@@ -466,7 +470,7 @@ def extract_gst(source: str, file_name: Optional[str] = None) -> list:
             print("GST row error:", repr(e))
         finally:
             _release_voucher(voucher)
- 
+
     df = pd.DataFrame(rows)
     if df.empty:
         return []
@@ -475,12 +479,12 @@ def extract_gst(source: str, file_name: Optional[str] = None) -> list:
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
     int_cols = ["TaxableValue", "CGST", "SGST", "IGST", "CESS", "InvoiceAmount"]
     df[int_cols] = df[int_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
- 
+
     if file_name:
-        _save_to_db(df, _table_name(file_name))
+        _save_to_db(df, df,f"GST_{file_name}__{date}")
     return _safe_records(df)
- 
- 
+
+
 # =========================================================
 # MONTH-END PROVISIONS — iterparse, true streaming
 # =========================================================
@@ -499,28 +503,28 @@ PROVISION_KEYWORDS = [
     "maintenance payable", "contractor payable", "legal fee payable",
     "consultancy payable",
 ]
- 
- 
+
+
 def _is_provision_ledger(ledger_name: str) -> bool:
     ledger_name = " ".join(str(ledger_name).lower().strip().split())
     return any(kw in ledger_name for kw in PROVISION_KEYWORDS)
- 
- 
+
+
 def _get_voucher_type(voucher) -> str:
     vch = (voucher.findtext("VCHTYPE", "") or "").strip()
     return vch or (voucher.get("VCHTYPE", "") or "").strip()
- 
- 
+
+
 def _get_ledger_entries(voucher):
     entries = voucher.findall("ALLLEDGERENTRIES.LIST")
     return entries if entries else voucher.findall("LEDGERENTRIES.LIST")
- 
- 
+
+
 def _get_ledger_name(ledger) -> str:
     name = (ledger.findtext("LEDGERNAME", "") or "").strip()
     return name or (ledger.findtext("PARTYLEDGERNAME", "") or "").strip()
- 
- 
+
+
 def _get_nature(ledger, amount: float) -> str:
     flag = (ledger.findtext("ISDEEMEDPOSITIVE", "") or "").strip().lower()
     if flag == "yes":
@@ -528,13 +532,13 @@ def _get_nature(ledger, amount: float) -> str:
     if flag == "no":
         return "Credit"
     return "Credit" if amount < 0 else "Debit"
- 
- 
+
+
 def extract_month_end_provisions(source: str, file_name: Optional[str] = None) -> list:
     """TRUE streaming — iterparse direct from GCS."""
-    stream = _open_gcs_stream(source)
-    rows   = []
- 
+    stream  = _open_gcs_stream(source)
+    rows    = []
+
     context = etree.iterparse(stream, events=("end",), tag="VOUCHER",
                                recover=True, huge_tree=True)
     for _, voucher in context:
@@ -545,7 +549,7 @@ def extract_month_end_provisions(source: str, file_name: Optional[str] = None) -
             voucher_no   = (voucher.findtext("VOUCHERNUMBER", "") or "").strip()
             narration    = (voucher.findtext("NARRATION", "") or "").strip()
             fmt_date     = pd.to_datetime(date_raw, format="%Y%m%d", errors="coerce").date() if date_raw else None
- 
+
             for ledger in _get_ledger_entries(voucher):
                 ledger_name = _get_ledger_name(ledger)
                 amount      = safe_float(ledger.findtext("AMOUNT", "0"))
@@ -565,34 +569,35 @@ def extract_month_end_provisions(source: str, file_name: Optional[str] = None) -
             print("Provisions row error:", repr(e))
         finally:
             _release_voucher(voucher)
- 
+
     df = pd.DataFrame(rows, columns=[
         "GUID", "Date", "Voucher Number", "Voucher Type",
         "Ledger Name", "Amount", "Nature", "Narration",
     ])
     if df.empty:
         if file_name:
-            _save_to_db(df, _table_name(file_name))
+            _save_to_db(df, file_name)
         return []
- 
+
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
     string_cols = ["GUID", "Voucher Number", "Voucher Type", "Ledger Name", "Nature", "Narration"]
     df[string_cols] = df[string_cols].apply(lambda col: col.astype(str).str.strip())
     df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0)
- 
+
     if file_name:
-        _save_to_db(df, _table_name(file_name))
+        
+        _save_to_db(df, f"MONTH_end_{file_name}__{date}"))
     return _safe_records(df)
- 
- 
+
+
 # =========================================================
 # LEDGER TRANSACTIONS — iterparse, true streaming
 # =========================================================
 def extract_ledger_transactions(source: str, file_name: Optional[str] = None) -> list:
     """TRUE streaming — iterparse direct from GCS."""
-    stream = _open_gcs_stream(source)
-    rows   = []
- 
+    stream  = _open_gcs_stream(source)
+    rows    = []
+
     context = etree.iterparse(stream, events=("end",), tag="VOUCHER",
                                recover=True, huge_tree=True)
     for _, voucher in context:
@@ -607,7 +612,7 @@ def extract_ledger_transactions(source: str, file_name: Optional[str] = None) ->
                 voucher_type = (voucher.get("VCHTYPE", "") or "").strip()
             date         = (voucher.findtext("DATE", "") or "").strip()
             narration    = (voucher.findtext("NARRATION", "") or "").strip()
- 
+
             ledgers = voucher.findall("ALLLEDGERENTRIES.LIST") or voucher.findall("LEDGERENTRIES.LIST")
             for ledger in ledgers:
                 ledger_name = (ledger.findtext("LEDGERNAME", "") or "").strip()
@@ -628,27 +633,28 @@ def extract_ledger_transactions(source: str, file_name: Optional[str] = None) ->
             print("Ledger row error:", repr(e))
         finally:
             _release_voucher(voucher)
- 
+
     df = pd.DataFrame(rows, columns=[
         "GUID", "Date", "Voucher_No", "Voucher_Type", "Narration",
         "Party", "Ledger_Name", "Amount", "Debit", "Credit",
     ])
     if df.empty:
         if file_name:
-            _save_to_db(df, _table_name(file_name))
+            
+            _save_to_db(df, f"Vouchers+{file_name}__{date}")
         return []
- 
+
     df["Date"] = pd.to_datetime(df["Date"], format="%Y%m%d", errors="coerce").dt.date
     string_cols = ["GUID", "Voucher_No", "Voucher_Type", "Narration", "Party", "Ledger_Name"]
     df[string_cols] = df[string_cols].apply(lambda col: col.astype(str).str.strip())
     df[["Amount", "Debit", "Credit"]] = df[["Amount", "Debit", "Credit"]].apply(
         pd.to_numeric, errors="coerce").fillna(0)
- 
+
     if file_name:
-        _save_to_db(df, _table_name(file_name))
+        _save_to_db(df, file_name)
     return _safe_records(df)
- 
- 
+
+
 # =========================================================
 # TDS — iterparse, true streaming
 # =========================================================
@@ -680,16 +686,19 @@ TDS_KEYWORDS = {
     "u/s 194i", "u/s 194h", "u/s 194a", "u/s 192",
     "sec 194q", "u/s 194q",
 }
-# NOTE: matching is substring-based. The bare numeric entries ("192", "194a",
-# etc.) can false-positive against ledger names that happen to contain those
-# digits. Worth a word-boundary regex if false positives show up in practice.
- 
- 
+# NOTE: matching is substring-based (see _is_tds_ledger below). The bare
+# numeric entries ("192", "194a", etc.) can false-positive against ledger
+# names that happen to contain those digits (e.g. an invoice/bill number).
+# Left as-is since tightening this is a business-logic call, not a
+# streaming/memory fix — worth a word-boundary regex if false positives
+# show up in practice.
+
+
 def _is_tds_ledger(ledger_name: str) -> bool:
     lower = ledger_name.strip().lower()
     return lower in TDS_KEYWORDS or any(kw in lower for kw in TDS_KEYWORDS)
- 
- 
+
+
 def _is_tds_by_xml_tags(ledger_elem) -> bool:
     return bool(
         ledger_elem.findtext(".//TDSAMOUNT")
@@ -697,31 +706,25 @@ def _is_tds_by_xml_tags(ledger_elem) -> bool:
         or ledger_elem.findtext(".//TDSNATUREOFPAYMENT")
         or ledger_elem.findtext(".//TAXTYPE", "").lower() == "tds"
     )
- 
- 
+
+
 def _safe_float(value, default=0.0) -> float:
     try:
         return float(value)
     except (TypeError, ValueError):
         return default
- 
- 
+
+
 def extract_tds(
     source:         str,
-    file_name:      Optional[str] = None,   # added for symmetry with other extractors
     deducted_table: Optional[str] = None,
     paid_table:     Optional[str] = None,
 ) -> dict:
     """TRUE streaming — iterparse direct from GCS."""
-    # Derive table names from file_name when not supplied explicitly
-    if file_name:
-        deducted_table = deducted_table or _table_name(file_name, "_tds_deducted")
-        paid_table     = paid_table     or _table_name(file_name, "_tds_paid")
- 
-    stream        = _open_gcs_stream(source)
-    deducted_rows = []
-    payment_rows  = []
- 
+    stream         = _open_gcs_stream(source)
+    deducted_rows: list = []
+    payment_rows:  list = []
+
     context = etree.iterparse(stream, events=("end",), tag="VOUCHER",
                                recover=True, huge_tree=True)
     for _, voucher in context:
@@ -735,21 +738,21 @@ def extract_tds(
                 month_key    = voucher_date.strftime("%Y-%m")
             except ValueError:
                 continue
- 
+
             party_name     = voucher.findtext("PARTYLEDGERNAME", "")
             voucher_number = voucher.findtext("VOUCHERNUMBER", "")
             voucher_type   = (voucher.findtext("VOUCHERTYPENAME", "") or "").strip()
- 
+
             for ledger in voucher.findall(".//ALLLEDGERENTRIES.LIST"):
                 ledger_name = ledger.findtext("LEDGERNAME", "").strip()
                 if not (_is_tds_ledger(ledger_name) or _is_tds_by_xml_tags(ledger)):
                     continue
- 
+
                 raw_amount = ledger.findtext(".//TDSAMOUNT") or ledger.findtext("AMOUNT", "0")
                 tds_amount = abs(_safe_float(raw_amount))
                 is_debit   = _safe_float(ledger.findtext("AMOUNT", "0")) > 0
                 tds_nature = (ledger.findtext(".//TDSNATUREOFPAYMENT") or "").strip()
- 
+
                 base_row = {
                     "GUID":           GUID,
                     "voucher_date":   voucher_date,
@@ -769,12 +772,12 @@ def extract_tds(
             print("TDS row error:", repr(e))
         finally:
             _release_voucher(voucher)
- 
+
     string_cols = ["GUID", "month", "voucher_number", "voucher_type",
                    "party_name", "ledger_name", "tds_nature", "entry_type"]
     date_cols   = ["voucher_date"]
     int_cols    = ["tds_amount"]
- 
+
     def _finalize(rows):
         df = pd.DataFrame(rows)
         if df.empty:
@@ -784,28 +787,28 @@ def extract_tds(
         df[int_cols]    = df[int_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
         df[string_cols] = df[string_cols].apply(lambda col: col.astype(str).str.strip())
         return df
- 
+
     deducted_df = _finalize(deducted_rows)
     payment_df  = _finalize(payment_rows)
- 
+
     if deducted_table and not deducted_df.empty:
         _save_to_db(deducted_df, deducted_table)
     if paid_table and not payment_df.empty:
         _save_to_db(payment_df, paid_table)
- 
+
     return {
         "tds_deducted": _safe_records(deducted_df.head(10)),
         "tds_paid":     _safe_records(payment_df.head(10)),
     }
- 
- 
+
+
 # =========================================================
 # BILLS — iterparse, true streaming
 # =========================================================
 def read_tally_xml(source: str) -> pd.DataFrame:
-    stream = _open_gcs_stream(source)
-    rows   = []
- 
+    stream  = _open_gcs_stream(source)
+    rows    = []
+
     context = etree.iterparse(stream, events=("end",), tag="VOUCHER",
                                recover=True, huge_tree=True)
     for _, voucher in context:
@@ -815,7 +818,7 @@ def read_tally_xml(source: str) -> pd.DataFrame:
             voucher_type = (voucher.findtext("VOUCHERTYPENAME", "") or "").strip()
             date         = (voucher.findtext("DATE", "") or "").strip()
             party_ledger = (voucher.findtext("PARTYLEDGERNAME", "") or "").strip()
- 
+
             ledger_entries = (
                 voucher.findall(".//LEDGERENTRIES.LIST")
                 + voucher.findall(".//ALLLEDGERENTRIES.LIST")
@@ -826,7 +829,7 @@ def read_tally_xml(source: str) -> pd.DataFrame:
                     amount = float(ledger_entry.findtext("AMOUNT") or 0)
                 except Exception:
                     amount = 0.0
- 
+
                 for bill in ledger_entry.findall(".//BILLALLOCATIONS.LIST"):
                     bill_name = (bill.findtext("NAME") or "").strip()
                     bill_type = (bill.findtext("BILLTYPE") or "").strip()
@@ -849,7 +852,7 @@ def read_tally_xml(source: str) -> pd.DataFrame:
             print("Bills voucher error:", e)
         finally:
             _release_voucher(voucher)
- 
+
     expected_columns = [
         "GUID", "Voucher Number", "Voucher Type", "Date",
         "Party Ledger", "Ledger Name", "Bill Name", "Bill Type", "Amount"
@@ -864,28 +867,28 @@ def read_tally_xml(source: str) -> pd.DataFrame:
         if col not in df.columns:
             df[col] = ""
     return df[expected_columns]
- 
- 
+
+
 def build_outstanding(df: pd.DataFrame) -> pd.DataFrame:
     temp = df.copy()
     temp["Bill Type"]    = temp["Bill Type"].astype(str).str.strip().str.upper()
     temp["Voucher Type"] = temp["Voucher Type"].astype(str).str.strip().str.upper()
     temp["Amount"]       = pd.to_numeric(temp["Amount"], errors="coerce").fillna(0)
     temp["Date"]         = pd.to_datetime(temp["Date"], errors="coerce").dt.date
- 
+
     new_ref_df  = temp[temp["Bill Type"] == "NEW REF"].copy()
     agst_ref_df = temp[temp["Bill Type"] == "AGST REF"].copy()
     final_rows  = []
- 
+
     for _, new_row in new_ref_df.iterrows():
         matching_agst = agst_ref_df[
             (agst_ref_df["Ledger Name"] == new_row["Ledger Name"])
             & (agst_ref_df["Bill Name"] == new_row["Bill Name"])
         ].sort_values("Date")
- 
+
         new_amount     = new_row["Amount"]
         invoice_amount = abs(new_amount)
- 
+
         if matching_agst.empty:
             final_rows.append({
                 "New Bill ID":       new_row["GUID"],
@@ -900,7 +903,7 @@ def build_outstanding(df: pd.DataFrame) -> pd.DataFrame:
                 "Outstanding":       round(invoice_amount, 2),
             })
             continue
- 
+
         running_balance = invoice_amount
         for _, agst_row in matching_agst.iterrows():
             days_diff = (agst_row["Date"] - new_row["Date"]).days
@@ -927,7 +930,7 @@ def build_outstanding(df: pd.DataFrame) -> pd.DataFrame:
                 "Adjusted Amount":      adj_display,
                 "Outstanding":          running_balance,
             })
- 
+
     result = pd.DataFrame(final_rows)
     if not result.empty:
         string_cols = ["New Bill ID", "Against Bill ID", "Ledger Name", "Bill Name"]
@@ -939,30 +942,30 @@ def build_outstanding(df: pd.DataFrame) -> pd.DataFrame:
         for col in ["New Bill Date", "Against Bill Date"]:
             result[col] = pd.to_datetime(result[col], errors="coerce").dt.date
     return result
- 
- 
+
+
 def extract_bills(source: str, file_name: Optional[str] = None) -> dict:
     df          = read_tally_xml(source)
     outstanding = build_outstanding(df)
- 
+
     bill_types = {}
     for bill_type in df["Bill Type"].dropna().astype(str).str.strip().unique():
         if not bill_type:
             continue
         subset = df[df["Bill Type"].astype(str).str.strip() == bill_type]
         if file_name and not subset.empty:
-            _save_to_db(subset, _table_name(file_name, f"_{bill_type.lower().replace(' ', '_')}"))
+            _save_to_db(subset, f"{file_name}_{bill_type.lower().replace(' ', '_')}")
         bill_types[bill_type] = _safe_records(subset.head(10))
- 
+
     if file_name and not outstanding.empty:
-        _save_to_db(outstanding, _table_name(file_name, "_outstanding"))
- 
+        _save_to_db(outstanding, f"{file_name}_outstanding")
+
     return {
         "bill_types":  bill_types,
         "outstanding": _safe_records(outstanding.head(10)),
     }
- 
- 
+
+
 # =========================================================
 # STOCK — iterparse, true streaming
 # =========================================================
@@ -973,20 +976,20 @@ INVENTORY_TAGS = [
     "INVENTORYENTRIESOUT.LIST",
     "INVENTORYENTRIESWITHOUTSTOCK.LIST",
 ]
- 
- 
+
+
 def _get_inventory_entries(voucher):
     entries = []
     for tag in INVENTORY_TAGS:
         entries.extend(voucher.findall(f".//{tag}"))
     return entries
- 
- 
+
+
 def extract_stock(source: str, file_name: Optional[str] = None) -> list:
     """TRUE streaming — iterparse direct from GCS."""
-    stream = _open_gcs_stream(source)
-    rows   = []
- 
+    stream  = _open_gcs_stream(source)
+    rows    = []
+
     context = etree.iterparse(stream, events=("end",), tag="VOUCHER",
                                recover=True, huge_tree=True)
     for _, voucher in context:
@@ -996,7 +999,7 @@ def extract_stock(source: str, file_name: Optional[str] = None) -> list:
             voucher_type = (voucher.findtext("VOUCHERTYPENAME", "") or "").strip()
             date         = (voucher.findtext("DATE", "") or "").strip()
             party_name   = (voucher.findtext("PARTYLEDGERNAME", "") or "").strip()
- 
+
             for item in _get_inventory_entries(voucher):
                 stock_item = (item.findtext("STOCKITEMNAME") or "").strip()
                 if not stock_item:
@@ -1017,7 +1020,7 @@ def extract_stock(source: str, file_name: Optional[str] = None) -> list:
             print("Stock row error:", repr(e))
         finally:
             _release_voucher(voucher)
- 
+
     expected_columns = [
         "GUID", "Date", "VoucherType", "VoucherNumber", "PartyName",
         "StockItem", "ActualQty", "BilledQty", "Rate", "Amount",
@@ -1032,9 +1035,8 @@ def extract_stock(source: str, file_name: Optional[str] = None) -> list:
         if col not in df.columns:
             df[col] = ""
     df = df[expected_columns].reset_index(drop=True)
- 
+
     if file_name:
-        _save_to_db(df, _table_name(file_name))
+        _save_to_db(df, file_name)
     return _safe_records(df)
- 
 
