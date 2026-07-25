@@ -50,11 +50,11 @@ async def upload_from_request(
     client = gcs_storage.Client()
     bucket = client.bucket(BUCKET_NAME)
     blob   = bucket.blob(destination_blob_name)
-
+    name = file.filename
     contents = await file.read()  # read file bytes from request
     blob.upload_from_string(contents, content_type=file.content_type)
 
-    return f"gs://{BUCKET_NAME}/{destination_blob_name}"
+    return f"gs://{BUCKET_NAME}/{destination_blob_name}/{name}"
 
 
 
