@@ -25,7 +25,7 @@ def get_text(element, tag_name: str) -> str:
 load_dotenv()
 
 
-
+date = datetime.now().strftime("%Y%m%d")
 DB_HOST = get_secret("DB_HOST")
 DB_PORT = get_secret("DB_PORT")
 DB_NAME = get_secret("DB_NAME")
@@ -47,7 +47,7 @@ async def upload_from_request(file: UploadFile, destination_blob_name: str):
     client = gcs_storage.Client()
     bucket = client.bucket(BUCKET_NAME)
 
-    date = datetime.now().strftime("%Y%m%d")
+    
     object_name = f"{destination_blob_name}/{file.filename}_{date}"
 
     blob = bucket.blob(object_name)
