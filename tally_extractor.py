@@ -10,6 +10,7 @@ from gcp_secrets import get_secret
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query, UploadFile, File, Form  #
 from google.cloud import storage as gcs_storage
+from datetime import datetime
 
 # Inlined from Stock.py — avoids a blocking import (Stock.py hangs on load)
 def get_text(element, tag_name: str) -> str:
@@ -53,8 +54,9 @@ async def upload_from_request(
     name = file.filename
     contents = await file.read()  # read file bytes from request
     blob.upload_from_string(contents, content_type=file.content_type)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    return f"gs://{BUCKET_NAME}/{destination_blob_name}/{name}"
+    return f"gs://{BUCKET_NAME}/{destination_blob_name}/{name}_{timestamp}"
 
 
 
