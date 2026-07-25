@@ -37,7 +37,7 @@ def list_folders():
 @app.post("/upload_gcs")
 async def upload_gcs_file(
     file: UploadFile = File(..., description="File to upload."),
-    bucket_name: str = Form(..., description="GCS bucket name."),
+    
     destination_blob_name: str = Form(..., description="Destination blob name in GCS."),
 ):
     """
