@@ -54,7 +54,7 @@ async def upload_from_request(
     contents = await file.read()  # read file bytes from request
     blob.upload_from_string(contents, content_type=file.content_type)
 
-    return f"gs://{bucket_name}/{destination_blob_name}"
+    return f"gs://{BUCKET_NAME}/{destination_blob_name}"
 
 
 
