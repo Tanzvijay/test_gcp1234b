@@ -56,7 +56,7 @@ async def upload_from_request(
     blob.upload_from_string(contents, content_type=file.content_type)
     date = datetime.now().strftime("%Y%m%d")
 
-    return f"gs://{BUCKET_NAME}/{destination_blob_name}/{name}_{date}"
+    return f"gs://{BUCKET_NAME}/{destination_blob_name}{name}_{date}"
 
 
 
