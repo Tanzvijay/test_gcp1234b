@@ -43,18 +43,19 @@ def _get_engine():
     return create_engine(DATABASE_URL)
 
 
-async def upload_from_request(
-    file: UploadFile,
-    destination_blob_name: str
-) -> str:
-    client   = gcs_storage.Client()
-    bucket   = client.bucket(BUCKET_NAME)
-    blob     = bucket.blob(destination_blob_name)
-    name     = file.filename
+async def upload_from_request(file: UploadFile, destination_blob_name: str):
+    client = gcs_storage.Client()
+    bucket = client.bucket(BUCKET_NAME)
+
+    date = datetime.now().strftime("%Y%m%d")
+    object_name = f"{destination_blob_name}/{file.filename}_{date}"
+
+    blob = bucket.blob(object_name)
+
     contents = await file.read()
     blob.upload_from_string(contents, content_type=file.content_type)
-    date = datetime.now().strftime("%Y%m%d")
-    return f"gs://{BUCKET_NAME}/{destination_blob_name}/{name}_{date}"
+
+    return f"gs://{BUCKET_NAME}/{object_name}"
 
 
 
