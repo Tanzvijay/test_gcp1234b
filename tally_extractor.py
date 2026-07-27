@@ -8,9 +8,8 @@ from lxml import etree
 from datetime import datetime
 from gcp_secrets import get_secret
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query, UploadFile, File, Form  #
+
 from google.cloud import storage as gcs_storage
-from datetime import datetime
 
 # Inlined from Stock.py — avoids a blocking import (Stock.py hangs on load)
 def get_text(element, tag_name: str) -> str:
@@ -25,7 +24,7 @@ def get_text(element, tag_name: str) -> str:
 load_dotenv()
 
 
-date = datetime.now().strftime("%Y%m%d")
+
 DB_HOST = get_secret("DB_HOST")
 DB_PORT = get_secret("DB_PORT")
 DB_NAME = get_secret("DB_NAME")
@@ -43,20 +42,14 @@ def _get_engine():
     return create_engine(DATABASE_URL)
 
 
-async def upload_from_request(file: UploadFile, destination_blob_name: str):
+def upload_large_xml(bucket_name, local_file, destination_blob):
     client = gcs_storage.Client()
-    bucket = client.bucket(BUCKET_NAME)
-
-    
-    object_name = f"{destination_blob_name}/{file.filename}_{date}"
-
-    blob = bucket.blob(object_name)
-
-    contents = await file.read()
-    blob.upload_from_string(contents, content_type=file.content_type)
-
-    return f"gs://{BUCKET_NAME}/{object_name}"
-
+    bucket = client.bucket(bucket_name)
+    blob   = bucket.blob(destination_blob)
+    blob.chunk_size = 10 * 1024 * 1024
+    with open(local_file, "rb") as f:
+        blob.upload_from_file(f)
+    return f"gs://{bucket_name}/{destination_blob}"
 
 
 def list_gcs_files(bucket_name: str, prefix: Optional[str] = None) -> list:
@@ -342,9 +335,9 @@ def extract_brs(source: str, file_name: Optional[str] = None) -> list:
     df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0)
     for col in ["Voucher Date", "Instrument Date", "Bankers Date", "Bank Date"]:
         df[col] = pd.to_datetime(df[col], format="%Y%m%d", errors="coerce").dt.date
-    
+
     if file_name:
-        _save_to_db(df,f"BRS_{file_name}__{date}")
+        _save_to_db(df, file_name)
     return _safe_records(df)
 
 
@@ -481,7 +474,7 @@ def extract_gst(source: str, file_name: Optional[str] = None) -> list:
     df[int_cols] = df[int_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
 
     if file_name:
-        _save_to_db(df, f"GST_{file_name}__{date}")
+        _save_to_db(df, file_name)
     return _safe_records(df)
 
 
@@ -576,7 +569,7 @@ def extract_month_end_provisions(source: str, file_name: Optional[str] = None) -
     ])
     if df.empty:
         if file_name:
-            _save_to_db(df, f"MONTH_end_{file_name}__{date}")
+            _save_to_db(df, file_name)
         return []
 
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
@@ -585,7 +578,7 @@ def extract_month_end_provisions(source: str, file_name: Optional[str] = None) -
     df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0)
 
     if file_name:
-        _save_to_db(df, f"MONTH_end_{file_name}__{date}")
+        _save_to_db(df, file_name)
     return _safe_records(df)
 
 
@@ -639,7 +632,7 @@ def extract_ledger_transactions(source: str, file_name: Optional[str] = None) ->
     ])
     if df.empty:
         if file_name:
-            _save_to_db(df, f"Vouchers_{file_name}__{date}")
+            _save_to_db(df, file_name)
         return []
 
     df["Date"] = pd.to_datetime(df["Date"], format="%Y%m%d", errors="coerce").dt.date
@@ -649,7 +642,7 @@ def extract_ledger_transactions(source: str, file_name: Optional[str] = None) ->
         pd.to_numeric, errors="coerce").fillna(0)
 
     if file_name:
-        _save_to_db(df, f"Vouchers_{file_name}__{date}")
+        _save_to_db(df, file_name)
     return _safe_records(df)
 
 
@@ -952,11 +945,11 @@ def extract_bills(source: str, file_name: Optional[str] = None) -> dict:
             continue
         subset = df[df["Bill Type"].astype(str).str.strip() == bill_type]
         if file_name and not subset.empty:
-            _save_to_db(subset, f"{file_name}_{bill_type.lower().replace(' ', '_')}__{date}")
+            _save_to_db(subset, f"{file_name}_{bill_type.lower().replace(' ', '_')}")
         bill_types[bill_type] = _safe_records(subset.head(10))
 
     if file_name and not outstanding.empty:
-        _save_to_db(outstanding, f"{file_name}_outstanding__{date}")
+        _save_to_db(outstanding, f"{file_name}_outstanding")
 
     return {
         "bill_types":  bill_types,
@@ -1035,5 +1028,8 @@ def extract_stock(source: str, file_name: Optional[str] = None) -> list:
     df = df[expected_columns].reset_index(drop=True)
 
     if file_name:
-        _save_to_db(df, f"Stock_{file_name}__{date}")
+        _save_to_db(df, file_name)
     return _safe_records(df)
+
+
+
