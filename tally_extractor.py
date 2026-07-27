@@ -42,14 +42,20 @@ def _get_engine():
     return create_engine(DATABASE_URL)
 
 
-def upload_large_xml(bucket_name, local_file, destination_blob):
+async def upload_from_request(file: UploadFile, destination_blob_name: str):
     client = gcs_storage.Client()
-    bucket = client.bucket(bucket_name)
-    blob   = bucket.blob(destination_blob)
-    blob.chunk_size = 10 * 1024 * 1024
-    with open(local_file, "rb") as f:
-        blob.upload_from_file(f)
-    return f"gs://{bucket_name}/{destination_blob}"
+    bucket = client.bucket(BUCKET_NAME)
+
+    
+    object_name = f"{destination_blob_name}/{file.filename}_{date}"
+
+    blob = bucket.blob(object_name)
+
+    contents = await file.read()
+    blob.upload_from_string(contents, content_type=file.content_type)
+
+    return f"gs://{BUCKET_NAME}/{object_name}"
+
 
 
 def list_gcs_files(bucket_name: str, prefix: Optional[str] = None) -> list:
