@@ -113,23 +113,33 @@ def _clean_line(text: str) -> bytes:
 
 
 def _gcs_clean_stream(bucket_name: str, blob_name: str) -> Generator[bytes, None, None]:
-    """
-    TRUE streaming generator — yields cleaned UTF-8 bytes line by line
-    directly from GCS.  At most ONE line is ever in RAM at a time.
-    No BytesIO accumulation, no temp file.
-    """
-    client = gcs_storage.Client()
-    blob   = client.bucket(bucket_name).blob(blob_name)
-    first  = True
-    with blob.open("rb") as gcs_stream:
-        for raw_line in gcs_stream:
-            text = raw_line.decode("utf-8", errors="ignore")
-            if first:
-                idx = text.find("<")
-                if idx > 0:
-                    text = text[idx:]
-                first = False
-            yield _clean_line(text)
+    client   = gcs_storage.Client()
+    blob     = client.bucket(bucket_name).blob(blob_name)
+    CHUNK    = 32 * 1024 * 1024        # ← changed from 8 to 32
+    leftover = b""
+    first    = True
+
+    with blob.open("rb", chunk_size=32*1024*1024) as gcs_stream:  # ← changed from 8 to 32
+        while True:
+            raw = gcs_stream.read(CHUNK)
+            if not raw:
+                if leftover:
+                    text = leftover.decode("utf-8", errors="ignore")
+                    yield _clean_line(text)
+                break
+
+            raw      = leftover + raw
+            lines    = raw.split(b"\n")
+            leftover = lines[-1]
+
+            for line in lines[:-1]:
+                text = line.decode("utf-8", errors="ignore") + "\n"
+                if first:
+                    idx = text.find("<")
+                    if idx > 0:
+                        text = text[idx:]
+                    first = False
+                yield _clean_line(text)
 
 
 class _GCSStream:
