@@ -1,3 +1,17 @@
+
+# routers.py  — add these lines at the very top
+
+from fastapi import FastAPI, Query, HTTPException, UploadFile, File, Form
+from typing import Optional
+
+app = FastAPI(
+    title="Tally XML Extractor API",
+    version="3.0.0",
+)
+
+
+
+
 from tally_extractor import (
     run_brs, run_gst, run_provisions, run_ledger,
     run_tds, run_bills, run_stock,
