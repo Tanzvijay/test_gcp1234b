@@ -1,16 +1,5 @@
-
-# routers.py  — add these lines at the very top
-
 from fastapi import FastAPI, Query, HTTPException, UploadFile, File, Form
 from typing import Optional
-
-app = FastAPI(
-    title="Tally XML Extractor API",
-    version="3.0.0",
-)
-
-
-
 
 from tally_extractor import (
     run_brs, run_gst, run_provisions, run_ledger,
@@ -20,50 +9,126 @@ from tally_extractor import (
     BUCKET_NAME, list_gcs_folders,
 )
 
-@app.get("/jobs/{job_id}")
+app = FastAPI(
+    title="Tally XML Extractor API",
+    description="Reads Tally XML exports from GCS. Heavy jobs run in background — poll /jobs/{job_id} for result.",
+    version="3.0.0",
+)
+
+
+# ── Job status ────────────────────────────────────────────────────────────────
+
+@app.get("/jobs/{job_id}", tags=["jobs"])
 def job_status(job_id: str):
+    """Poll this after starting any extraction. Returns status, result, error."""
     job = get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found.")
     return job
 
-@app.get("/jobs")
-def list_jobs(limit: int = Query(50)):
+
+@app.get("/jobs", tags=["jobs"])
+def list_jobs(limit: int = Query(50, ge=1, le=500)):
+    """List the most recent jobs (newest first). Useful for debugging."""
     jobs = get_all_jobs()
     jobs.sort(key=lambda j: j["started_at"], reverse=True)
     return jobs[:limit]
 
-@app.get("/extract/brs")
-def brs_endpoint(source: str = Query(...), file_name: str = Query(...)):
+
+# ── File utilities ────────────────────────────────────────────────────────────
+
+@app.get("/List_folders", tags=["files"])
+def list_folders():
+    """Lists all top-level folders in the GCS bucket."""
+    return list_gcs_folders(BUCKET_NAME)
+
+
+@app.get("/files", tags=["files"])
+def list_files(
+    prefix: Optional[str] = Query(None, description="Folder prefix e.g. uploads_xml/")
+):
+    """Lists all files in the GCS bucket, optionally filtered by prefix."""
+    return list_gcs_files(BUCKET_NAME, prefix)
+
+
+@app.post("/upload_gcs", tags=["files"])
+async def upload_gcs_file(
+    file: UploadFile = File(..., description="File to upload."),
+    destination_blob_name: str = Form(..., description="Destination folder/name in GCS."),
+):
+    """Uploads a file to Google Cloud Storage. Returns the GCS URI."""
+    gcs_uri = await upload_from_request(file, destination_blob_name)
+    return {"gcs_uri": gcs_uri}
+
+
+# ── Extraction endpoints ───────────────────────────────────────────────────────
+
+@app.get("/extract/brs", tags=["extraction"])
+def brs_endpoint(
+    source:    str = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
+    file_name: str = Query(..., description="Table name suffix saved to PostgreSQL."),
+):
+    """Start BRS extraction. Returns job_id immediately — poll /jobs/{job_id} for result."""
     job_id = run_brs(source, file_name)
     return {"job_id": job_id, "status": "running"}
 
-@app.get("/extract/gst")
-def gst_endpoint(source: str = Query(...), file_name: str = Query(...)):
+
+@app.get("/extract/gst", tags=["extraction"])
+def gst_endpoint(
+    source:    str = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
+    file_name: str = Query(..., description="Table name suffix saved to PostgreSQL."),
+):
+    """Start GST extraction. Returns job_id immediately — poll /jobs/{job_id} for result."""
     job_id = run_gst(source, file_name)
     return {"job_id": job_id, "status": "running"}
 
-@app.get("/extract/provisions")
-def provisions_endpoint(source: str = Query(...), file_name: str = Query(...)):
+
+@app.get("/extract/provisions", tags=["extraction"])
+def provisions_endpoint(
+    source:    str = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
+    file_name: str = Query(..., description="Table name suffix saved to PostgreSQL."),
+):
+    """Start month-end provisions extraction. Returns job_id immediately."""
     job_id = run_provisions(source, file_name)
     return {"job_id": job_id, "status": "running"}
 
-@app.get("/extract/ledger")
-def ledger_endpoint(source: str = Query(...), file_name: str = Query(...)):
+
+@app.get("/extract/ledger", tags=["extraction"])
+def ledger_endpoint(
+    source:    str = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
+    file_name: str = Query(..., description="Table name suffix saved to PostgreSQL."),
+):
+    """Start ledger transactions extraction. Returns job_id immediately."""
     job_id = run_ledger(source, file_name)
     return {"job_id": job_id, "status": "running"}
 
-@app.get("/extract/tds")
-def tds_endpoint(source: str = Query(...), deducted_table: str = Query(...), paid_table: str = Query(...)):
+
+@app.get("/extract/tds", tags=["extraction"])
+def tds_endpoint(
+    source:         str = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
+    deducted_table: str = Query(..., description="PostgreSQL table for TDS Deducted rows."),
+    paid_table:     str = Query(..., description="PostgreSQL table for TDS Paid rows."),
+):
+    """Start TDS extraction. Result has tds_deducted and tds_paid (top 10 each)."""
     job_id = run_tds(source, deducted_table, paid_table)
     return {"job_id": job_id, "status": "running"}
 
-@app.get("/extract/bills")
-def bills_endpoint(source: str = Query(...), file_name: str = Query(...)):
+
+@app.get("/extract/bills", tags=["extraction"])
+def bills_endpoint(
+    source:    str = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
+    file_name: str = Query(..., description="Table name suffix saved to PostgreSQL."),
+):
+    """Start bills extraction. Result has bill_types and outstanding (top 10 each)."""
     job_id = run_bills(source, file_name)
     return {"job_id": job_id, "status": "running"}
 
-@app.get("/extract/stock")
-def stock_endpoint(source: str = Query(...), file_name: str = Query(...)):
+
+@app.get("/extract/stock", tags=["extraction"])
+def stock_endpoint(
+    source:    str = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
+    file_name: str = Query(..., description="Table name suffix saved to PostgreSQL."),
+):
+    """Start stock extraction. Returns job_id immediately."""
     job_id = run_stock(source, file_name)
     return {"job_id": job_id, "status": "running"}
