@@ -11,6 +11,89 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Query, UploadFile, File, Form  #
 from google.cloud import storage as gcs_storage
 from datetime import datetime
+import uuid
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from datetime import timezone
+
+# ── Job registry ──────────────────────────────────────────────────────────────
+_jobs: dict[str, dict] = {}
+_jobs_lock = threading.Lock()
+_executor = ThreadPoolExecutor(max_workers=4)
+
+def _new_job() -> str:
+    job_id = str(uuid.uuid4())
+    with _jobs_lock:
+        _jobs[job_id] = {
+            "job_id":      job_id,
+            "status":      "running",
+            "result":      None,
+            "error":       None,
+            "started_at":  datetime.now(timezone.utc).isoformat(),
+            "finished_at": None,
+        }
+    return job_id
+
+def _run_job(job_id: str, fn, *args, **kwargs):
+    def _worker():
+        try:
+            result = fn(*args, **kwargs)
+            with _jobs_lock:
+                _jobs[job_id]["status"]      = "done"
+                _jobs[job_id]["result"]      = result
+                _jobs[job_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
+        except Exception as exc:
+            with _jobs_lock:
+                _jobs[job_id]["status"]      = "error"
+                _jobs[job_id]["error"]       = str(exc)
+                _jobs[job_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
+    _executor.submit(_worker)
+
+def get_job(job_id: str) -> dict | None:
+    with _jobs_lock:
+        return _jobs.get(job_id)
+
+def get_all_jobs() -> list:
+    with _jobs_lock:
+        return list(_jobs.values())
+
+# ── Public job-launching functions ────────────────────────────────────────────
+def run_brs(source: str, file_name: str) -> str:
+    job_id = _new_job()
+    _run_job(job_id, extract_brs, source, file_name)
+    return job_id
+
+def run_gst(source: str, file_name: str) -> str:
+    job_id = _new_job()
+    _run_job(job_id, extract_gst, source, file_name)
+    return job_id
+
+def run_provisions(source: str, file_name: str) -> str:
+    job_id = _new_job()
+    _run_job(job_id, extract_month_end_provisions, source, file_name)
+    return job_id
+
+def run_ledger(source: str, file_name: str) -> str:
+    job_id = _new_job()
+    _run_job(job_id, extract_ledger_transactions, source, file_name)
+    return job_id
+
+def run_tds(source: str, deducted_table: str, paid_table: str) -> str:
+    job_id = _new_job()
+    _run_job(job_id, extract_tds, source, deducted_table, paid_table)
+    return job_id
+
+def run_bills(source: str, file_name: str) -> str:
+    job_id = _new_job()
+    _run_job(job_id, extract_bills, source, file_name)
+    return job_id
+
+def run_stock(source: str, file_name: str) -> str:
+    job_id = _new_job()
+    _run_job(job_id, extract_stock, source, file_name)
+    return job_id
+
+
 
 # Inlined from Stock.py — avoids a blocking import (Stock.py hangs on load)
 def get_text(element, tag_name: str) -> str:
