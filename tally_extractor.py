@@ -355,7 +355,7 @@ def extract_brs(source: str, file_name: Optional[str] = None) -> list:
     
     if file_name:
         _save_to_db(df,f"BRS_{file_name}__{date}")
-    return _safe_records(df)
+    return _safe_records(df.head(100))
 
 
 # =========================================================
@@ -492,7 +492,7 @@ def extract_gst(source: str, file_name: Optional[str] = None) -> list:
 
     if file_name:
         _save_to_db(df, f"GST_{file_name}__{date}")
-    return _safe_records(df)
+    return _safe_records(df.head(100))
 
 
 # =========================================================
@@ -596,7 +596,7 @@ def extract_month_end_provisions(source: str, file_name: Optional[str] = None) -
 
     if file_name:
         _save_to_db(df, f"MONTH_end_{file_name}__{date}")
-    return _safe_records(df)
+    return _safe_records(df.head(100))
 
 
 # =========================================================
@@ -660,7 +660,7 @@ def extract_ledger_transactions(source: str, file_name: Optional[str] = None) ->
 
     if file_name:
         _save_to_db(df, f"Vouchers_{file_name}__{date}")
-    return _safe_records(df)
+    return _safe_records(df.head(100))
 
 
 # =========================================================
@@ -1046,4 +1046,4 @@ def extract_stock(source: str, file_name: Optional[str] = None) -> list:
 
     if file_name:
         _save_to_db(df, f"Stock_{file_name}__{date}")
-    return _safe_records(df)
+    return _safe_records(df.head(100))
