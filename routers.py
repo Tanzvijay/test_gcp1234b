@@ -16,63 +16,24 @@ app = FastAPI(
 )
 
 @app.get("/files/to_delete", tags=["files"])
-def list_files_to_delete(
-    prefix: Optional[str] = Query(None, description="Folder prefix e.g. uploads_xml/"),
-    blob_name: Optional[str] = Query(None, description="Exact blob name e.g. uploads_xml/file.xml"),
+def list_files_to_delete_endpoint(
+    prefix: str = Query(..., description="Folder prefix e.g. uploads_xml/"),
 ):
-    """Preview files that would be deleted — no actual deletion."""
-    from google.cloud import storage as gcs_storage
-
-    if not prefix and not blob_name:
-        raise HTTPException(status_code=400, detail="Provide either 'prefix' or 'blob_name'.")
-
-    client = gcs_storage.Client()
-    bucket = client.bucket(BUCKET_NAME)
-    files  = []
-
-    if blob_name:
-        blob = bucket.blob(blob_name)
-        if not blob.exists():
-            raise HTTPException(status_code=404, detail=f"{blob_name!r} not found.")
-        files.append(blob_name)
-    else:
-        blobs = list(bucket.list_blobs(prefix=prefix))
-        if not blobs:
-            raise HTTPException(status_code=404, detail=f"No files found under prefix {prefix!r}.")
-        files = [blob.name for blob in blobs]
-
+    """Preview files that would be deleted under a folder prefix — no actual deletion."""
+    files = list_files_to_delete(BUCKET_NAME, prefix)
+    if not files:
+        raise HTTPException(status_code=404, detail=f"No files found under prefix {prefix!r}.")
     return {"files_to_delete": files, "count": len(files)}
 
 
 @app.delete("/delete", tags=["files"])
-def delete_files(
-    prefix:    Optional[str] = Query(None, description="Folder prefix to delete all files e.g. uploads_xml/"),
-    blob_name: Optional[str] = Query(None, description="Exact blob name to delete a single file e.g. uploads_xml/file.xml"),
+def delete_files_endpoint(
+    prefix: str = Query(..., description="Folder prefix to delete all files e.g. uploads_xml/"),
 ):
-    """Delete a single file or all files under a folder prefix in the GCS bucket."""
-    from google.cloud import storage as gcs_storage
-
-    if not prefix and not blob_name:
-        raise HTTPException(status_code=400, detail="Provide either 'prefix' or 'blob_name'.")
-
-    client = gcs_storage.Client()
-    bucket = client.bucket(BUCKET_NAME)
-    deleted = []
-
-    if blob_name:
-        blob = bucket.blob(blob_name)
-        if not blob.exists():
-            raise HTTPException(status_code=404, detail=f"{blob_name!r} not found.")
-        blob.delete()
-        deleted.append(blob_name)
-    else:
-        blobs = list(bucket.list_blobs(prefix=prefix))
-        if not blobs:
-            raise HTTPException(status_code=404, detail=f"No files found under prefix {prefix!r}.")
-        for blob in blobs:
-            blob.delete()
-            deleted.append(blob.name)
-
+    """Delete all files under a folder prefix in the GCS bucket."""
+    deleted = delete_files_by_prefix(BUCKET_NAME, prefix)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"No files found under prefix {prefix!r}.")
     return {"deleted": deleted, "count": len(deleted)}
 # ── Job status ────────────────────────────────────────────────────────────────
 
