@@ -101,17 +101,14 @@ def ledger_endpoint(
     job_id = run_ledger(source, file_name)
     return {"job_id": job_id, "status": "running"}
 
-
 @app.get("/extract/tds", tags=["extraction"])
 def tds_endpoint(
-    source:         str = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
-    deducted_table: str = Query(..., description="PostgreSQL table for TDS Deducted rows."),
-    paid_table:     str = Query(..., description="PostgreSQL table for TDS Paid rows."),
+    source:    str = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
+    file_name: str = Query(..., description="Base name for the PostgreSQL tables."),
 ):
     """Start TDS extraction. Result has tds_deducted and tds_paid (top 10 each)."""
-    job_id = run_tds(source, deducted_table, paid_table)
+    job_id = run_tds(source, file_name)
     return {"job_id": job_id, "status": "running"}
-
 
 @app.get("/extract/bills", tags=["extraction"])
 def bills_endpoint(
