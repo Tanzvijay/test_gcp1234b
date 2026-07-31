@@ -146,6 +146,16 @@ async def upload_from_request(file: UploadFile, destination_blob_name: str):
     return f"gs://{BUCKET_NAME}/{object_name}"
 
 
+def delete_gcs_file(blob_name: str) -> dict:
+    client = gcs_storage.Client()
+    blob   = client.bucket(BUCKET_NAME).blob(blob_name)
+
+    if not blob.exists():
+        raise FileNotFoundError(f"File '{blob_name}' not found in bucket.")
+
+    blob.delete()
+    return {"deleted": blob_name, "bucket": BUCKET_NAME}
+
 def list_gcs_files(bucket_name: str, prefix: Optional[str] = None) -> list:
     client = gcs_storage.Client()
     bucket = client.bucket(bucket_name)
