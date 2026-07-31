@@ -109,6 +109,7 @@ def get_text(element, tag_name: str) -> str:
 
 load_dotenv()
 
+
 date = datetime.now().strftime("%Y%m%d")
 DB_HOST     = get_secret("DB_HOST")
 DB_PORT     = get_secret("DB_PORT")
@@ -121,7 +122,22 @@ DATABASE_URL = (
     f"postgresql://{DB_USER}:{DB_PASSWORD}"
     f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
+def list_files_to_delete(bucket_name: str, prefix: str) -> list:
+    client = gcs_storage.Client()
+    bucket = client.bucket(bucket_name)
+    blobs  = list(bucket.list_blobs(prefix=prefix))
+    return [blob.name for blob in blobs]
 
+
+def delete_files_by_prefix(bucket_name: str, prefix: str) -> list:
+    client  = gcs_storage.Client()
+    bucket  = client.bucket(bucket_name)
+    blobs   = list(bucket.list_blobs(prefix=prefix))
+    deleted = []
+    for blob in blobs:
+        blob.delete()
+        deleted.append(blob.name)
+    return deleted
 
 def _get_engine():
     return create_engine(DATABASE_URL)
