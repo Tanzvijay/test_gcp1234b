@@ -34,7 +34,17 @@ def list_jobs(limit: int = Query(50, ge=1, le=500)):
     jobs.sort(key=lambda j: j["started_at"], reverse=True)
     return jobs[:limit]
 
-
+@app.delete("/delete/file", tags=["files"])
+def delete_file(
+    blob_name: str = Query(..., description="Full blob path e.g. uploads_xml/myfile.xml"),
+):
+    """Deletes a single file from the GCS bucket."""
+    try:
+        return delete_gcs_file(blob_name)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 # ── File utilities ────────────────────────────────────────────────────────────
 
 @app.get("/List_folders", tags=["files"])
