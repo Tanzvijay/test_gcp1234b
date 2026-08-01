@@ -175,7 +175,8 @@ def list_gcs_folders(bucket_name: str, prefix: str = ""):
     client = gcs_storage.Client()
     blobs  = client.list_blobs(bucket_name, prefix=prefix, delimiter="/")
     list(blobs)
-    return list(blobs.prefixes)
+    # Remove trailing "/" from folder names
+    return [p.rstrip("/") for p in blobs.prefixes]
 
 
 # ── defined ONCE ───────────────────────────────────────────────────────────────
