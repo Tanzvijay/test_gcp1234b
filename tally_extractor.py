@@ -110,7 +110,7 @@ def get_text(element, tag_name: str) -> str:
 load_dotenv()
 
 
-date = datetime.now().strftime("%Y%m%d")
+date = datetime.now().strftime("%d-%m-%Y")
 DB_HOST     = get_secret("DB_HOST")
 DB_PORT     = get_secret("DB_PORT")
 DB_NAME     = get_secret("DB_NAME")
