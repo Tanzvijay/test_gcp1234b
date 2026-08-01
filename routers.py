@@ -69,14 +69,21 @@ def list_files(
     return list_gcs_files(BUCKET_NAME, prefix)
 
 
-@app.post("/upload_gcs", tags=["files"])
+@router.post("/upload_gcs", tags=["files"])
 async def upload_gcs_file(
-    file: UploadFile = File(..., description="File to upload."),
-    destination_blob_name: str = Form(..., description="Destination folder/name in GCS."),
+    file: UploadFile = File(..., description="XML file to upload."),
 ):
-    """Uploads a file to Google Cloud Storage. Returns the GCS URI."""
-    gcs_uri = await upload_from_request(file, destination_blob_name)
-    return {"gcs_uri": gcs_uri}
+    """Uploads a file to Google Cloud Storage under an auto-created MM-YYYY folder. Returns the GCS URI."""
+    result = await upload_from_request(file)
+    
+    if result["status"] == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    
+    return {
+        "gcs_uri": result["gcs_uri"],
+        "size_mb": result["size_mb"],
+        "bytes_uploaded": result["bytes_uploaded"]
+    }
 
 
 # ── Extraction endpoints ───────────────────────────────────────────────────────
