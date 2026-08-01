@@ -152,15 +152,17 @@ async def upload_from_request(file: UploadFile, destination_blob_name: str):
     client = gcs_storage.Client()
     bucket = client.bucket(BUCKET_NAME)
 
-    object_name = f"{destination_blob_name}/{file.filename}_{date}"
+    # Create month-year folder
+    month_year = datetime.now().strftime("%m-%Y")  # e.g., "07-2026"
+    
+    # Path: destination_blob_name/07-2026/filename_date
+    object_name = f"{destination_blob_name}/{month_year}/{file.filename}_{date}"
 
     blob = bucket.blob(object_name)
-
     contents = await file.read()
     blob.upload_from_string(contents, content_type=file.content_type)
 
     return f"gs://{BUCKET_NAME}/{object_name}"
-
 
 def list_gcs_files(bucket_name: str, prefix: Optional[str] = None) -> list:
     client = gcs_storage.Client()
