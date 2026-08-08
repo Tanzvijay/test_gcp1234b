@@ -1,21 +1,40 @@
-from fastapi import FastAPI, Query, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, Query, HTTPException, UploadFile, File, Form, Depends
+from fastapi.security import APIKeyHeader
 from typing import Optional
 
+from auth import require_api_key                          # ← new
 from tally_extractor import (
     run_brs, run_gst, run_provisions, run_ledger,
     run_tds, run_bills, run_stock,
     get_job, get_all_jobs,
     list_gcs_files, upload_from_request,
-    BUCKET_NAME, list_gcs_folders ,list_files_to_delete, delete_files_by_prefix,  
+    BUCKET_NAME, list_gcs_folders, list_files_to_delete, delete_files_by_prefix,
 )
 
+# ── App ────────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Tally XML Extractor API",
-    description="Reads Tally XML exports from GCS. Heavy jobs run in background — poll /jobs/{job_id} for result.",
-    version="3.0.0",
+    description=(
+        "Reads Tally XML exports from GCS. "
+        "Heavy jobs run in background — poll /jobs/{job_id} for result.\n\n"
+        "**Authentication:** every endpoint requires an `X-API-Key` header. "
+        "Click the 🔒 **Authorize** button and enter your key."
+    ),
+    version="3.1.0",
+    # Tell Swagger UI to offer the X-API-Key lock icon
+    swagger_ui_parameters={"persistAuthorization": True},
 )
 
-@app.get("/files/to_delete", tags=["files"])
+# Register the security scheme so Swagger shows the Authorize button
+app.openapi_tags = []          # populated below via tag groups
+
+# ── Shorthand: inject auth on every route ─────────────────────────────────────
+_auth = Depends(require_api_key)
+
+
+# ── File management ───────────────────────────────────────────────────────────
+
+@app.get("/files/to_delete", tags=["files"], dependencies=[_auth])
 def list_files_to_delete_endpoint(
     prefix: str = Query(..., description="Folder prefix e.g. uploads_xml/"),
 ):
@@ -26,7 +45,7 @@ def list_files_to_delete_endpoint(
     return {"files_to_delete": files, "count": len(files)}
 
 
-@app.delete("/delete", tags=["files"])
+@app.delete("/delete", tags=["files"], dependencies=[_auth])
 def delete_files_endpoint(
     prefix: str = Query(..., description="Folder prefix to delete all files e.g. uploads_xml/"),
 ):
@@ -35,9 +54,37 @@ def delete_files_endpoint(
     if not deleted:
         raise HTTPException(status_code=404, detail=f"No files found under prefix {prefix!r}.")
     return {"deleted": deleted, "count": len(deleted)}
+
+
+@app.get("/List_folders", tags=["files"], dependencies=[_auth])
+def list_folders():
+    """Lists all top-level folders in the GCS bucket."""
+    return list_gcs_folders(BUCKET_NAME)
+
+
+@app.get("/files", tags=["files"], dependencies=[_auth])
+def list_files(
+    prefix: Optional[str] = Query(None, description="Folder prefix e.g. uploads_xml/"),
+):
+    """Lists all files in the GCS bucket, optionally filtered by prefix."""
+    return list_gcs_files(BUCKET_NAME, prefix)
+
+
+@app.post("/upload_gcs", tags=["files"], dependencies=[_auth])
+async def upload_gcs_file(
+    file: UploadFile = File(..., description="XML file to upload."),
+):
+    """
+    Uploads a file to Google Cloud Storage under an auto-created MM-YYYY folder.
+    Returns the GCS URI.
+    """
+    result = await upload_from_request(file, file.filename)
+    return {"gcs_uri": result}
+
+
 # ── Job status ────────────────────────────────────────────────────────────────
 
-@app.get("/jobs/{job_id}", tags=["jobs"])
+@app.get("/jobs/{job_id}", tags=["jobs"], dependencies=[_auth])
 def job_status(job_id: str):
     """Poll this after starting any extraction. Returns status, result, error."""
     job = get_job(job_id)
@@ -46,7 +93,7 @@ def job_status(job_id: str):
     return job
 
 
-@app.get("/jobs", tags=["jobs"])
+@app.get("/jobs", tags=["jobs"], dependencies=[_auth])
 def list_jobs(limit: int = Query(50, ge=1, le=500)):
     """List the most recent jobs (newest first). Useful for debugging."""
     jobs = get_all_jobs()
@@ -54,41 +101,9 @@ def list_jobs(limit: int = Query(50, ge=1, le=500)):
     return jobs[:limit]
 
 
-
-@app.get("/List_folders", tags=["files"])
-def list_folders():
-    """Lists all top-level folders in the GCS bucket."""
-    return list_gcs_folders(BUCKET_NAME)
-
-
-@app.get("/files", tags=["files"])
-def list_files(
-    prefix: Optional[str] = Query(None, description="Folder prefix e.g. uploads_xml/")
-):
-    """Lists all files in the GCS bucket, optionally filtered by prefix."""
-    return list_gcs_files(BUCKET_NAME, prefix)
-
-
-@router.post("/upload_gcs", tags=["files"])
-async def upload_gcs_file(
-    file: UploadFile = File(..., description="XML file to upload."),
-):
-    """Uploads a file to Google Cloud Storage under an auto-created MM-YYYY folder. Returns the GCS URI."""
-    result = await upload_from_request(file)
-    
-    if result["status"] == "error":
-        raise HTTPException(status_code=500, detail=result["message"])
-    
-    return {
-        "gcs_uri": result["gcs_uri"],
-        "size_mb": result["size_mb"],
-        "bytes_uploaded": result["bytes_uploaded"]
-    }
-
-
 # ── Extraction endpoints ───────────────────────────────────────────────────────
 
-@app.get("/extract/brs", tags=["extraction"])
+@app.get("/extract/brs", tags=["extraction"], dependencies=[_auth])
 def brs_endpoint(
     source:    str = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
     file_name: str = Query(..., description="Table name suffix saved to PostgreSQL."),
@@ -98,7 +113,7 @@ def brs_endpoint(
     return {"job_id": job_id, "status": "running"}
 
 
-@app.get("/extract/gst", tags=["extraction"])
+@app.get("/extract/gst", tags=["extraction"], dependencies=[_auth])
 def gst_endpoint(
     source:    str = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
     file_name: str = Query(..., description="Table name suffix saved to PostgreSQL."),
@@ -108,7 +123,7 @@ def gst_endpoint(
     return {"job_id": job_id, "status": "running"}
 
 
-@app.get("/extract/provisions", tags=["extraction"])
+@app.get("/extract/provisions", tags=["extraction"], dependencies=[_auth])
 def provisions_endpoint(
     source:    str = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
     file_name: str = Query(..., description="Table name suffix saved to PostgreSQL."),
@@ -118,7 +133,7 @@ def provisions_endpoint(
     return {"job_id": job_id, "status": "running"}
 
 
-@app.get("/extract/ledger", tags=["extraction"])
+@app.get("/extract/ledger", tags=["extraction"], dependencies=[_auth])
 def ledger_endpoint(
     source:    str = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
     file_name: str = Query(..., description="Table name suffix saved to PostgreSQL."),
@@ -127,7 +142,8 @@ def ledger_endpoint(
     job_id = run_ledger(source, file_name)
     return {"job_id": job_id, "status": "running"}
 
-@app.get("/extract/tds", tags=["extraction"])
+
+@app.get("/extract/tds", tags=["extraction"], dependencies=[_auth])
 def tds_endpoint(
     source:    str = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
     file_name: str = Query(..., description="Base name for the PostgreSQL tables."),
@@ -136,7 +152,8 @@ def tds_endpoint(
     job_id = run_tds(source, file_name)
     return {"job_id": job_id, "status": "running"}
 
-@app.get("/extract/bills", tags=["extraction"])
+
+@app.get("/extract/bills", tags=["extraction"], dependencies=[_auth])
 def bills_endpoint(
     source:    str = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
     file_name: str = Query(..., description="Table name suffix saved to PostgreSQL."),
@@ -146,7 +163,7 @@ def bills_endpoint(
     return {"job_id": job_id, "status": "running"}
 
 
-@app.get("/extract/stock", tags=["extraction"])
+@app.get("/extract/stock", tags=["extraction"], dependencies=[_auth])
 def stock_endpoint(
     source:    str = Query(..., description="GCS URI e.g. gs://bucket/file.xml"),
     file_name: str = Query(..., description="Table name suffix saved to PostgreSQL."),
