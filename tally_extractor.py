@@ -156,7 +156,7 @@ async def upload_from_request(file: UploadFile, destination_blob_name: str):
     month_year = datetime.now().strftime("%m-%Y")  # e.g., "07-2026"
     
     # Path: destination_blob_name/07-2026/filename_date
-    object_name = f"{destination_blob_name}/{month_year}/{file.filename}_{date}"
+    object_name = f"/{month_year}/{file.filename}_{date}"
 
     blob = bucket.blob(object_name)
     contents = await file.read()
